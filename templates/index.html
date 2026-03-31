@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACAM - Autonomous Cryptanalysis & Attack Machine</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <span class="logo-icon">&gt;_</span>
+                <h1>ACAM</h1>
+            </div>
+            <p class="subtitle">Autonomous Cryptanalysis & Attack Machine</p>
+        </div>
+    </header>
+
+    <main>
+        <nav class="tabs">
+            <button class="tab active" data-tab="classical">Klasik Sifre Kirma</button>
+            <button class="tab" data-tab="stego">Steganografi (Resim)</button>
+            <button class="tab" data-tab="oracle">AES-CBC Oracle</button>
+            <button class="tab" data-tab="rsa">RSA Faktorizasyon</button>
+            <button class="tab" data-tab="wiener">Wiener's Attack</button>
+            <button class="tab" data-tab="hashdes">Hash & DES Kırıcı</button>
+            <button class="tab" data-tab="autotest" style="color: #60a5fa; border-color: #60a5fa;">Sistem Raporu</button>
+        </nav>
+
+        <section id="tab-classical" class="tab-content active">
+            <div class="input-panel">
+                <label for="ciphertext">Sifreli Veri (Ciphertext)</label>
+                <textarea id="ciphertext" rows="5" placeholder="Sifreli metni buraya girin...&#10;Hex, Base64, Base32 veya duz metin olabilir."></textarea>
+                <button id="btn-break" class="btn-primary" onclick="breakCipher()">
+                    <span class="btn-icon">&#9889;</span> Analiz Et & Kir
+                </button>
+            </div>
+
+            <div id="results" class="results-panel hidden">
+                <div class="result-section" id="analysis-section">
+                    <h3>Format Analizi</h3>
+                    <div class="analysis-grid" id="analysis-grid"></div>
+                </div>
+
+                <div class="result-section aes-warning hidden" id="aes-ecb-section">
+                    <h3>AES-ECB Zafiyet Uyarisi</h3>
+                    <div id="aes-ecb-details"></div>
+                </div>
+
+                <div class="result-section hidden" id="decoded-section">
+                    <h3>Decode Edilmis Veri</h3>
+                    <pre id="decoded-text"></pre>
+                </div>
+
+                <div class="result-section" id="candidates-section">
+                    <h3>En Iyi Adaylar</h3>
+                    <div id="candidates-list"></div>
+                </div>
+
+                <div class="result-section best-result" id="best-section">
+                    <h3>Cozulen Sonuc</h3>
+                    <div id="best-result"></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-stego" class="tab-content">
+            <div class="input-panel">
+                <h3>Görsel İstihbarat (LSB Analizi)</h3>
+                <p style="color: #aaa; margin-bottom: 15px;">İçine gizli veri gömülmüş bir resim yükleyin. ACAM pikselleri analiz edip veriyi çıkaracak ve şifreliyse otomatik olarak kıracaktır.</p>
+                
+                <div class="input-group">
+                    <label for="stegoImageInput">Resim Dosyası Yükle (.png, .bmp)</label>
+                    <input type="file" id="stegoImageInput" accept="image/png, image/bmp" style="margin-top: 10px; font-size: 16px;">
+                </div>
+                
+                <button class="btn-primary" onclick="analyzeStegoImage()" style="margin-top: 15px;">
+                    <span class="btn-icon">🔍</span> Resmi Analiz Et
+                </button>
+            </div>
+
+            <div id="stegoResult" class="results-panel hidden">
+                <div class="result-section">
+                    <h3>Çıkarılan Ham Veri</h3>
+                    <p id="stegoRawData" style="word-break: break-all; color: #ff9800; font-family: monospace;"></p>
+                </div>
+                <div class="result-section best-result">
+                    <h3>ACAM Çözümlemesi</h3>
+                    <pre id="stegoDecryptedData" style="white-space: pre-wrap; word-wrap: break-word; font-size: 1.1em;"></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-hashdes" class="tab-content">
+            <div style="display: flex; gap: 20px;">
+                <div class="input-panel" style="flex: 1;">
+                    <h3>Otonom Hash Kırıcı</h3>
+                    <p style="color:#aaa;">MD5, SHA-1, SHA-256 ve SHA-512 algılar.</p>
+                    <textarea id="hashInput" rows="2" placeholder="Örn: 98dfa9322b2708c2a3e0f9bb1f0d367c3..."></textarea>
+                    <button class="btn-primary" onclick="runHashCrack()">Hash'i Kır</button>
+                    <div id="hashResult" class="best-result hidden" style="margin-top: 15px;"></div>
+                </div>
+
+                <div class="input-panel" style="flex: 1;">
+                    <h3>DES Sözlük Saldırısı</h3>
+                    <p style="color:#aaa;">Hex formatında DES şifreli veriyi girin.</p>
+                    <textarea id="desInput" rows="2" placeholder="Örn: a1b2c3d4e5f6..."></textarea>
+                    <button class="btn-primary" onclick="runDesCrack()">DES Anahtarını Bul</button>
+                    <div id="desResult" class="best-result hidden" style="margin-top: 15px;"></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-oracle" class="tab-content">
+            <div class="input-panel">
+                <h3>Aktif Sunucu Saldırısı (AES-CBC Padding Oracle)</h3>
+                <p style="color: #aaa; margin-bottom: 15px;">Hedef sunucuya sahte paketler göndererek, gizli şifreleme anahtarını (Key) bilmeden şifreli metni deşifre edin.</p>
+                
+                <div class="input-group">
+                    <label for="oracleCiphertext">Şifreli Veri (Ciphertext)</label>
+                    <textarea id="oracleCiphertext" rows="3" placeholder="Hex formatında AES-CBC şifreli metni girin.&#10;Boş bırakırsanız sistem arka plandaki demo sunucusunu kullanır..."></textarea>
+                </div>
+                
+                <button class="btn-primary" onclick="runPaddingOracle()">
+                    <span class="btn-icon">⚡</span> Saldırıyı Başlat (Side-Channel)
+                </button>
+            </div>
+
+            <div id="oracleResult" class="results-panel hidden">
+                <div style="display: flex; gap: 20px; align-items: stretch;">
+                    <div class="result-section" style="flex: 1; margin: 0;">
+                        <h3>Canlı Saldırı Adımları (Oracle Log)</h3>
+                        <div id="oracleProgressLog" style="background: #0d1117; color: #00ff00; padding: 15px; font-family: 'Courier New', monospace; height: 300px; overflow-y: auto; border: 1px solid #30363d; font-size: 0.85em; white-space: pre-wrap;">
+                        </div>
+                    </div>
+                    
+                    <div class="result-section best-result" style="flex: 1; margin: 0; display: flex; flex-direction: column;">
+                        <h3>Sızılan Nihai Veri</h3>
+                        <div id="oracleLoader" class="hidden" style="color: #ff9800; font-weight: bold; margin-bottom: 10px; animation: pulse 1.5s infinite;">
+                            Ağ Trafiği Dinleniyor ve Paketler Enjekte Ediliyor ⏳
+                        </div>
+                        <pre id="oracleDecryptedData" style="flex: 1; color: #10b981; font-size: 1.2em; border-left: 4px solid #10b981; padding: 15px; background: #1e1e1e;"></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-autotest" class="tab-content">
+            <div class="input-panel" style="text-align: center;">
+                <h3 style="color: #60a5fa; margin-bottom: 10px;">Otonom Sistem Tanılama & Raporlama</h3>
+                <p style="color: #a8b2d1; margin-bottom: 20px;">Tüm ACAM modüllerini (Klasik, Asimetrik, Modern, Hash) sırayla çalıştırır ve entegrasyon durumlarını denetler.</p>
+                
+                <button class="btn-primary" onclick="runAutoTests()" style="background-color: #2563eb; font-size: 1.1em; padding: 12px 24px;">
+                    <span class="btn-icon">⚙️</span> Tüm Testleri Başlat (Auto-Tester)
+                </button>
+            </div>
+
+            <div id="autoTestLoader" class="hidden" style="text-align: center; margin-top: 20px; color: #ff9800; font-weight: bold; animation: pulse 1.5s infinite;">
+                Modüller Yükleniyor ve Testler Koşuluyor... (Bu işlem birkaç saniye sürebilir) ⏳
+            </div>
+
+            <div id="autoTestResults" class="results-panel hidden" style="display: flex; flex-direction: column; gap: 15px; background: transparent; padding: 0;">
+            </div>
+        </section>
+
+        <section id="tab-rsa" class="tab-content">
+            <div class="input-panel">
+                <div class="input-row">
+                    <div class="input-group">
+                        <label for="rsa-modulus">Modulus (n)</label>
+                        <input type="text" id="rsa-modulus" placeholder="Ornek: 3233">
+                    </div>
+                    <div class="input-group">
+                        <label for="rsa-e">Public Exponent (e)</label>
+                        <input type="text" id="rsa-e" placeholder="Varsayilan: 65537" value="65537">
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label for="rsa-ciphertext">Ciphertext (Opsiyonel)</label>
+                    <input type="text" id="rsa-ciphertext" placeholder="Sifre cozme icin sifreli sayi girin">
+                </div>
+                <button class="btn-primary" onclick="breakRSA()">
+                    <span class="btn-icon">&#9889;</span> RSA Faktorize Et
+                </button>
+            </div>
+
+            <div id="rsa-results" class="results-panel hidden">
+                <div class="result-section best-result" id="rsa-result-content"></div>
+            </div>
+        </section>
+
+        <section id="tab-wiener" class="tab-content">
+            <div class="input-panel">
+                <div class="input-row">
+                    <div class="input-group">
+                        <label for="wiener-n">Modulus (n)</label>
+                        <input type="text" id="wiener-n" placeholder="RSA modulus">
+                    </div>
+                    <div class="input-group">
+                        <label for="wiener-e">Public Exponent (e)</label>
+                        <input type="text" id="wiener-e" placeholder="Buyuk e degeri">
+                    </div>
+                </div>
+                <button class="btn-primary" onclick="wienerAttack()">
+                    <span class="btn-icon">&#9889;</span> Wiener's Attack Baslat
+                </button>
+            </div>
+
+            <div id="wiener-results" class="results-panel hidden">
+                <div class="result-section best-result" id="wiener-result-content"></div>
+            </div>
+        </section>
+    </main>
+
+    <footer style="margin-top: 40px;">
+        <p>ACAM v2.0 | Computer Engineering Project | 2026</p>
+    </footer>
+
+    <div id="loading" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <p>Analiz ediliyor...</p>
+    </div>
+
+    <script src="/static/js/script.js"></script>
+</body>
+</html>
