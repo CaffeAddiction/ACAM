@@ -29,6 +29,48 @@ function hideLoading() {
 }
 
 // ---------------------------------------------------------
+// HAZIR TEST ÖRNEKLERİ (Auto-Tester'dan)
+// ---------------------------------------------------------
+let _testCasesCache = null;
+
+async function loadTestCases() {
+    if (_testCasesCache) return _testCasesCache;
+    try {
+        const response = await fetch('/api/test-cases');
+        _testCasesCache = await response.json();
+        return _testCasesCache;
+    } catch (e) {
+        console.error("Test case yükleme hatası:", e);
+        return null;
+    }
+}
+
+async function fillTestCase() {
+    const select = document.getElementById('testCaseSelect');
+    const infoDiv = document.getElementById('testCaseInfo');
+    const textarea = document.getElementById('ciphertext');
+    const key = select.value;
+
+    if (!key) {
+        infoDiv.style.display = 'none';
+        return;
+    }
+
+    const cases = await loadTestCases();
+    if (!cases || !cases[key]) {
+        alert("Test verisi yüklenemedi.");
+        return;
+    }
+
+    textarea.value = cases[key].ciphertext;
+    infoDiv.style.display = 'block';
+    infoDiv.innerHTML = `<strong>📌 ${select.options[select.selectedIndex].text}</strong><br>${cases[key].info}`;
+}
+
+// Sayfa yüklenince test case'leri arka planda önceden yükle
+document.addEventListener('DOMContentLoaded', () => { loadTestCases(); });
+
+// ---------------------------------------------------------
 // KLASİK ŞİFRE KIRMA (TAB 1)
 // ---------------------------------------------------------
 async function breakCipher() {
@@ -498,5 +540,394 @@ async function runAutoTests() {
         loader.classList.add('hidden');
         alert("Testler çalıştırılırken sunucu bağlantısı koptu.");
         console.error(error);
+    }
+}
+
+
+// ---------------------------------------------------------
+// ASALLIK TESTİ & GELİŞMİŞ FAKTORIZASYON (YENİ TAB)
+// ---------------------------------------------------------
+
+function fillPrimalityInput(value) {
+    document.getElementById('primalityInput').value = value;
+}
+
+function getMetaMode() {
+    const toggle = document.getElementById('metaModeToggle');
+    return toggle && toggle.checked ? 'meta' : 'race';
+}
+
+// Meta Model Durumu Kontrolü
+async function checkMetaStatus() {
+    try {
+        const resp = await fetch('/api/meta-status');
+        const status = await resp.json();
+        const badge = document.getElementById('metaStatusBadge');
+        if (badge) {
+            if (status.both_ready) {
+                badge.textContent = '✅ Hazır';
+                badge.className = 'trained';
+                badge.style.background = '';
+            } else {
+                badge.textContent = 'Eğitilmedi';
+                badge.className = '';
+                badge.style.background = '#dc2626';
+            }
+        }
+    } catch (e) { /* sunucu kapalı */ }
+}
+
+// Meta Model Eğitimi
+async function trainMetaModel() {
+    const btn = document.getElementById('metaTrainBtn');
+    const badge = document.getElementById('metaStatusBadge');
+    if (btn) btn.disabled = true;
+    if (btn) btn.innerHTML = '⏳ Eğitiliyor...';
+    if (badge) { badge.textContent = '⏳ Eğitim...'; badge.style.background = '#f59e0b'; }
+
+    try {
+        const resp = await fetch('/api/meta-train', { method: 'POST' });
+        const result = await resp.json();
+
+        if (result.success) {
+            const r = result.results;
+            alert(`✅ Meta-Öğrenme Eğitimi Tamamlandı!\n\n` +
+                  `Faktorizasyon: ${r.factor_samples} örnek, Doğruluk: ${(r.factor_accuracy * 100).toFixed(1)}%\n` +
+                  `Asallık: ${r.prime_samples} örnek, Doğruluk: ${(r.prime_accuracy * 100).toFixed(1)}%\n` +
+                  `Süre: ${r.training_time}s`);
+            if (badge) { badge.textContent = '✅ Hazır'; badge.className = 'trained'; badge.style.background = ''; }
+        } else {
+            alert('❌ Eğitim başarısız: ' + (result.error || 'Bilinmeyen hata'));
+            if (badge) { badge.textContent = '❌ Hata'; badge.style.background = '#dc2626'; }
+        }
+    } catch (e) {
+        alert('❌ Sunucuya bağlanılamadı.');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '⚙️ Modeli Eğit'; }
+    }
+}
+
+function updateMetaPredictionUI(metaPred) {
+    const infoDiv = document.getElementById('metaPredictionInfo');
+    if (!metaPred || !infoDiv) return;
+
+    const algoEl = document.getElementById('metaPredAlgo');
+    const confEl = document.getElementById('metaPredConf');
+    const reasonEl = document.getElementById('metaPredReason');
+
+    const displayName = metaPred.predicted_algorithm_display || metaPred.predicted_test_display || '?';
+    const conf = metaPred.confidence ? (metaPred.confidence * 100).toFixed(1) + '%' : '?';
+
+    if (algoEl) algoEl.textContent = `ML Seçimi: ${displayName}`;
+    if (confEl) confEl.textContent = `(Güven: ${conf})`;
+    if (reasonEl) reasonEl.textContent = metaPred.reason || '';
+
+    infoDiv.classList.remove('hidden');
+}
+
+// Toggle switch event
+document.addEventListener('DOMContentLoaded', function() {
+    const toggle = document.getElementById('metaModeToggle');
+    const desc = document.getElementById('metaModeDesc');
+    if (toggle) {
+        toggle.addEventListener('change', function() {
+            if (desc) {
+                desc.textContent = this.checked
+                    ? 'ML modeli en verimli algoritmayı tahmin eder ve direkt çalıştırır.'
+                    : 'Tüm algoritmalar yarışır, en hızlı kazanır (orijinal mod).';
+            }
+        });
+    }
+    checkMetaStatus();
+});
+
+async function runPrimalityTest() {
+    const numberStr = document.getElementById('primalityInput').value.trim();
+    if (!numberStr) {
+        alert("Lütfen bir sayı girin.");
+        return;
+    }
+
+    showLoading();
+    document.getElementById('primalityResults').classList.add('hidden');
+    document.getElementById('factorResults').classList.add('hidden');
+
+    try {
+        const response = await fetch('/api/primality-test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ number: numberStr, mode: getMetaMode() })
+        });
+        const data = await response.json();
+
+        if (data.error) {
+            alert("Hata: " + data.error);
+            hideLoading();
+            return;
+        }
+
+        // Meta tahmin bilgisini göster
+        if (data.meta_prediction) {
+            updateMetaPredictionUI(data.meta_prediction);
+        } else {
+            document.getElementById('metaPredictionInfo').classList.add('hidden');
+        }
+
+        renderPrimalityResults(data);
+        document.getElementById('primalityResults').classList.remove('hidden');
+
+    } catch (error) {
+        console.error("Primality API Hatası:", error);
+        alert("Sunucuya bağlanılamadı.");
+    } finally {
+        hideLoading();
+    }
+}
+
+function renderPrimalityResults(data) {
+    const verdictDiv = document.getElementById('primalityVerdictContent');
+    const detailsDiv = document.getElementById('primalityTestDetails');
+
+    // Renk ve ikon seçimi
+    let verdictColor, verdictIcon, verdictBg;
+    if (data.is_prime === true) {
+        verdictColor = '#10b981';
+        verdictIcon = '✅';
+        verdictBg = 'rgba(16, 185, 129, 0.08)';
+    } else if (data.is_prime === false) {
+        verdictColor = '#ef4444';
+        verdictIcon = '❌';
+        verdictBg = 'rgba(239, 68, 68, 0.08)';
+    } else {
+        verdictColor = '#f59e0b';
+        verdictIcon = '❓';
+        verdictBg = 'rgba(245, 158, 11, 0.08)';
+    }
+
+    const confidencePct = data.confidence !== undefined ? (data.confidence * 100).toFixed(4) : 'N/A';
+    const confidenceBar = data.confidence !== undefined
+        ? `<div style="background: #1e293b; border-radius: 8px; height: 12px; margin: 10px 0; overflow: hidden; border: 1px solid #334155;">
+              <div style="background: linear-gradient(90deg, ${verdictColor}, ${verdictColor}88); width: ${Math.min(data.confidence * 100, 100)}%; height: 100%; border-radius: 8px; transition: width 1s ease;"></div>
+           </div>`
+        : '';
+
+    verdictDiv.innerHTML = `
+        <div style="background: ${verdictBg}; border: 1px solid ${verdictColor}33; border-radius: 8px; padding: 20px; text-align: center;">
+            <div style="font-size: 2.5em; margin-bottom: 5px;">${verdictIcon}</div>
+            <div style="font-size: 1.4em; font-weight: bold; color: ${verdictColor}; margin-bottom: 8px;">
+                ${data.verdict || 'BELİRSİZ'}
+            </div>
+            <div style="color: #94a3b8; font-size: 0.9em; margin-bottom: 10px;">
+                Sayı: <span style="color: #e2e8f0; font-weight: bold;">${data.number}</span>
+                &nbsp;|&nbsp; ${data.bit_length} bit &nbsp;|&nbsp; ${data.digit_count} basamak
+            </div>
+            <div style="font-size: 0.95em; color: #cbd5e1;">
+                Güven Skoru: <strong style="color: ${verdictColor};">${confidencePct}%</strong>
+            </div>
+            ${confidenceBar}
+            ${data.factor_found ? `<div style="margin-top: 10px; color: #f59e0b;">💡 Bulunan bölen: <strong>${data.factor_found}</strong></div>` : ''}
+            <div style="margin-top: 12px; color: #64748b; font-size: 0.85em;">
+                ${data.recommendation || ''}
+            </div>
+            <div style="margin-top: 8px; color: #475569; font-size: 0.8em;">
+                ⏱️ Toplam süre: ${data.total_time}s
+            </div>
+        </div>
+    `;
+
+    // Algoritma Detayları
+    detailsDiv.innerHTML = '';
+    if (data.tests && data.tests.length > 0) {
+        data.tests.forEach((test, idx) => {
+            const r = test.result;
+            const isPrime = r.is_prime;
+            let statusIcon, statusColor, statusText;
+            
+            if (isPrime === true) {
+                statusIcon = '✅';
+                statusColor = '#10b981';
+                statusText = r.certainty === 'DEFINITE' ? 'KESİN ASAL' : 'MUHTEMELEN ASAL';
+            } else if (isPrime === false) {
+                statusIcon = '❌';
+                statusColor = '#ef4444';
+                statusText = 'BİLEŞİK (COMPOSITE)';
+            } else {
+                statusIcon = '⚠️';
+                statusColor = '#f59e0b';
+                statusText = 'BELİRSİZ';
+            }
+
+            const confidenceHtml = r.confidence !== undefined
+                ? `<span style="color: #94a3b8; font-size: 0.85em;"> | Güven: ${(r.confidence * 100).toFixed(2)}%</span>`
+                : '';
+            
+            const warningHtml = r.warning
+                ? `<div style="color: #f59e0b; font-size: 0.8em; margin-top: 4px;">⚠️ ${r.warning}</div>`
+                : '';
+
+            detailsDiv.innerHTML += `
+                <div class="primality-algo-card" style="animation-delay: ${idx * 80}ms;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-weight: bold; color: #e2e8f0; font-size: 1em;">
+                            ${test.emoji || '🔹'} ${test.name}
+                        </span>
+                        <span style="color: ${statusColor}; font-weight: bold; font-size: 0.9em;">
+                            ${statusIcon} ${statusText}
+                        </span>
+                    </div>
+                    <div style="color: #94a3b8; font-size: 0.85em; line-height: 1.5;">
+                        ${r.detail || ''}
+                        ${confidenceHtml}
+                    </div>
+                    ${warningHtml}
+                    <div style="color: #475569; font-size: 0.75em; margin-top: 6px; text-align: right;">
+                        ⏱️ ${test.time}s
+                    </div>
+                </div>
+            `;
+        });
+    }
+}
+
+
+async function runAdvancedFactor() {
+    const numberStr = document.getElementById('primalityInput').value.trim();
+    if (!numberStr) {
+        alert("Lütfen çarpanlarına ayrılacak bir sayı girin.");
+        return;
+    }
+
+    showLoading();
+    document.getElementById('primalityResults').classList.add('hidden');
+    document.getElementById('factorResults').classList.add('hidden');
+
+    try {
+        const response = await fetch('/api/advanced-factor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ number: numberStr, mode: getMetaMode() })
+        });
+        const data = await response.json();
+
+        if (data.error && !data.all_results) {
+            alert("Hata: " + data.error);
+            hideLoading();
+            return;
+        }
+
+        // Meta tahmin bilgisini göster
+        if (data.meta_prediction) {
+            updateMetaPredictionUI(data.meta_prediction);
+        } else {
+            document.getElementById('metaPredictionInfo').classList.add('hidden');
+        }
+
+        renderFactorResults(data);
+        document.getElementById('factorResults').classList.remove('hidden');
+
+    } catch (error) {
+        console.error("Factor API Hatası:", error);
+        alert("Sunucuya bağlanılamadı.");
+    } finally {
+        hideLoading();
+    }
+}
+
+function renderFactorResults(data) {
+    const verdictDiv = document.getElementById('factorVerdictContent');
+    const allResultsDiv = document.getElementById('factorAllResults');
+
+    if (data.success && data.best_result) {
+        const br = data.best_result;
+        verdictDiv.innerHTML = `
+            <div style="text-align: center; padding: 15px;">
+                <div style="font-size: 2em; margin-bottom: 8px;">💥</div>
+                <div style="font-size: 1.3em; font-weight: bold; color: #10b981; margin-bottom: 12px;">
+                    ÇARPANLAR BULUNDU!
+                </div>
+                <div style="font-size: 0.9em; color: #94a3b8; margin-bottom: 15px;">
+                    Kazanan Algoritma: <strong style="color: #f59e0b;">${br.algorithm}</strong>
+                    &nbsp;|&nbsp; Süre: <strong>${br.time}s</strong>
+                </div>
+                <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                    <div style="background: #0f172a; padding: 15px 25px; border-radius: 8px; border: 1px solid #10b981; min-width: 120px;">
+                        <div style="color: #64748b; font-size: 0.8em;">p (çarpan 1)</div>
+                        <div style="color: #10b981; font-weight: bold; font-size: 1.1em; word-break: break-all; margin-top: 4px;">${br.p}</div>
+                    </div>
+                    <div style="color: #475569; font-size: 1.5em; align-self: center;">×</div>
+                    <div style="background: #0f172a; padding: 15px 25px; border-radius: 8px; border: 1px solid #10b981; min-width: 120px;">
+                        <div style="color: #64748b; font-size: 0.8em;">q (çarpan 2)</div>
+                        <div style="color: #10b981; font-weight: bold; font-size: 1.1em; word-break: break-all; margin-top: 4px;">${br.q}</div>
+                    </div>
+                </div>
+                ${data.verification ? `
+                    <div style="margin-top: 12px; padding: 8px; background: ${data.verification.p_x_q_equals_n ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)'}; border-radius: 6px; font-size: 0.85em; color: ${data.verification.p_x_q_equals_n ? '#10b981' : '#ef4444'};">
+                        ${data.verification.p_x_q_equals_n ? '✅ Doğrulama: p × q = n ✓' : '❌ Doğrulama başarısız!'}
+                    </div>
+                ` : ''}
+                ${br.detail ? `<div style="color: #64748b; font-size: 0.8em; margin-top: 8px;">${br.detail}</div>` : ''}
+            </div>
+        `;
+    } else if (data.is_prime) {
+        verdictDiv.innerHTML = `
+            <div style="text-align: center; padding: 20px;">
+                <div style="font-size: 2em; margin-bottom: 8px;">🛡️</div>
+                <div style="font-size: 1.2em; font-weight: bold; color: #a78bfa;">
+                    Bu sayı ASAL! Çarpanlarına ayrılamaz.
+                </div>
+                <div style="color: #94a3b8; font-size: 0.9em; margin-top: 8px;">
+                    ${data.number} sayısı asal olduğundan çarpanlara ayırma işlemi uygulanamaz.
+                </div>
+            </div>
+        `;
+    } else {
+        verdictDiv.innerHTML = `
+            <div style="text-align: center; padding: 20px;">
+                <div style="font-size: 2em; margin-bottom: 8px;">⚠️</div>
+                <div style="font-size: 1.2em; font-weight: bold; color: #f59e0b;">
+                    Çarpan Bulunamadı
+                </div>
+                <div style="color: #94a3b8; font-size: 0.9em; margin-top: 8px;">
+                    ${data.error || 'Tüm algoritmalar denedi ama çarpan bulamadı.'}
+                </div>
+            </div>
+        `;
+    }
+
+    // Tüm algoritma sonuçları
+    allResultsDiv.innerHTML = '';
+    if (data.all_results && data.all_results.length > 0) {
+        allResultsDiv.innerHTML += `
+            <div style="color: #64748b; font-size: 0.85em; margin-bottom: 10px;">
+                ${data.all_results.length} algoritma denendi | Toplam süre: ${data.total_time}s | ${data.bit_length} bit sayı
+            </div>
+        `;
+
+        data.all_results.forEach((entry, idx) => {
+            const isSuccess = entry.success;
+            const borderColor = isSuccess ? '#10b981' : '#475569';
+            const statusIcon = isSuccess ? '✅' : '—';
+            const statusText = isSuccess ? 'BAŞARILI' : 'Başarısız';
+
+            let detailText = '';
+            if (isSuccess && entry.result) {
+                detailText = `p=${entry.result.p}, q=${entry.result.q}`;
+            } else if (entry.result && entry.result.error) {
+                detailText = entry.result.error;
+            }
+
+            allResultsDiv.innerHTML += `
+                <div class="primality-algo-card" style="border-left-color: ${borderColor}; animation-delay: ${idx * 60}ms;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: bold; color: #e2e8f0;">${entry.algorithm}</span>
+                        <span style="color: ${isSuccess ? '#10b981' : '#64748b'}; font-size: 0.85em; font-weight: bold;">
+                            ${statusIcon} ${statusText}
+                        </span>
+                    </div>
+                    <div style="color: #94a3b8; font-size: 0.8em; margin-top: 4px;">${detailText}</div>
+                    <div style="color: #475569; font-size: 0.75em; text-align: right; margin-top: 4px;">⏱️ ${entry.time}s</div>
+                </div>
+            `;
+        });
     }
 }

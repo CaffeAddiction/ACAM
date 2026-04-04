@@ -24,12 +24,55 @@
             <button class="tab" data-tab="oracle">AES-CBC Oracle</button>
             <button class="tab" data-tab="rsa">RSA Faktorizasyon</button>
             <button class="tab" data-tab="wiener">Wiener's Attack</button>
-            <button class="tab" data-tab="hashdes">Hash & DES Kırıcı</button>
+
+            <button class="tab" data-tab="primality" style="color: #a78bfa; border-color: #a78bfa;">Asallık & Faktorizasyon</button>
             <button class="tab" data-tab="autotest" style="color: #60a5fa; border-color: #60a5fa;">Sistem Raporu</button>
         </nav>
 
         <section id="tab-classical" class="tab-content active">
             <div class="input-panel">
+                <div style="margin-bottom: 10px;">
+                    <label for="testCaseSelect" style="color: #60a5fa;">📋 Hazır Test Örnekleri (Auto-Tester'dan)</label>
+                    <select id="testCaseSelect" onchange="fillTestCase()" style="width: 100%; background: #0f172a; color: #60a5fa; border: 1px solid #334155; border-radius: 4px; padding: 10px; font-size: 0.9rem; font-family: inherit; cursor: pointer; margin-top: 5px;">
+                        <option value="">-- Bir test örneği seçin --</option>
+                        <optgroup label="📝 Klasik Şifreler">
+                            <option value="plaintext">Test 1: Düz Metin (Plaintext)</option>
+                            <option value="caesar3">Test 2: Caesar (Shift 3)</option>
+                            <option value="caesar10">Test 3: Caesar (Shift 10)</option>
+                            <option value="vig_acam">Test 4: Vigenère (Key: ACAM)</option>
+                            <option value="vig_secrets">Test 5: Vigenère (Key: SECRETS)</option>
+                            <option value="vig_acam_long">Test 9: Vigenère Uzun (Key: ACAM)</option>
+                            <option value="atbash">Test 10: Atbash</option>
+                            <option value="affine">Test 11: Affine (a=5, b=8)</option>
+                            <option value="rail_fence">Test 12: Rail Fence (3 rays)</option>
+                            <option value="columnar">Test 15: Columnar Transposition</option>
+                            <option value="playfair">Test 16: Playfair (Key: MONARCHY)</option>
+                        </optgroup>
+                        <optgroup label="🔐 XOR Şifreler">
+                            <option value="xor_42">Test 6: XOR (Key: 0x42)</option>
+                            <option value="multi_xor">Test 14: Multi-byte XOR (0x41, 0x43)</option>
+                            <option value="repeat_xor">Test 20: Repeating-Key XOR (0x53, 0x45, 0x43)</option>
+                        </optgroup>
+                        <optgroup label="📦 Encoding + Şifreleme">
+                            <option value="hex_vig">Test 7: Hex + Vigenère (Key: ACAM)</option>
+                            <option value="b64_caesar">Test 13: Base64 + Caesar (Shift 5)</option>
+                            <option value="b32_caesar">Test 17: Base32 + Caesar (Shift 3)</option>
+                        </optgroup>
+                        <optgroup label="🛡️ AES-ECB Zafiyet">
+                            <option value="aes_ecb_1">Test 18: AES-ECB Zafiyet Tespiti</option>
+                            <option value="aes_ecb_2">Test 27: AES-ECB Zafiyet (Varyasyon 2)</option>
+                        </optgroup>
+                        <optgroup label="#️⃣ Hash & DES">
+                            <option value="hash_md5">Test 21: MD5 Hash (acam)</option>
+                            <option value="hash_sha256">Test 29: SHA-256 Hash (test)</option>
+                            <option value="des_ecb">Test 35: DES ECB (Key: admin123)</option>
+                            <option value="des_cbc">Test 36: DES CBC (Key: password)</option>
+                        </optgroup>
+                    </select>
+                    <div id="testCaseInfo" style="display:none; margin-top: 8px; padding: 8px 12px; background: #0f172a; border-left: 3px solid #60a5fa; border-radius: 4px; font-size: 0.85em; color: #94a3b8;">
+                    </div>
+                </div>
+
                 <label for="ciphertext">Sifreli Veri (Ciphertext)</label>
                 <textarea id="ciphertext" rows="5" placeholder="Sifreli metni buraya girin...&#10;Hex, Base64, Base32 veya duz metin olabilir."></textarea>
                 <button id="btn-break" class="btn-primary" onclick="breakCipher()">
@@ -92,25 +135,7 @@
             </div>
         </section>
 
-        <section id="tab-hashdes" class="tab-content">
-            <div style="display: flex; gap: 20px;">
-                <div class="input-panel" style="flex: 1;">
-                    <h3>Otonom Hash Kırıcı</h3>
-                    <p style="color:#aaa;">MD5, SHA-1, SHA-256 ve SHA-512 algılar.</p>
-                    <textarea id="hashInput" rows="2" placeholder="Örn: 98dfa9322b2708c2a3e0f9bb1f0d367c3..."></textarea>
-                    <button class="btn-primary" onclick="runHashCrack()">Hash'i Kır</button>
-                    <div id="hashResult" class="best-result hidden" style="margin-top: 15px;"></div>
-                </div>
 
-                <div class="input-panel" style="flex: 1;">
-                    <h3>DES Sözlük Saldırısı</h3>
-                    <p style="color:#aaa;">Hex formatında DES şifreli veriyi girin.</p>
-                    <textarea id="desInput" rows="2" placeholder="Örn: a1b2c3d4e5f6..."></textarea>
-                    <button class="btn-primary" onclick="runDesCrack()">DES Anahtarını Bul</button>
-                    <div id="desResult" class="best-result hidden" style="margin-top: 15px;"></div>
-                </div>
-            </div>
-        </section>
 
         <section id="tab-oracle" class="tab-content">
             <div class="input-panel">
@@ -209,6 +234,92 @@
 
             <div id="wiener-results" class="results-panel hidden">
                 <div class="result-section best-result" id="wiener-result-content"></div>
+            </div>
+        </section>
+
+        <section id="tab-primality" class="tab-content">
+            <div style="margin-bottom: 25px;">
+                <h2 style="color: #a78bfa; margin-bottom: 8px; font-size: 1.3em;">🔬 Asallık Testi & Gelişmiş Çarpanlara Ayırma</h2>
+                <p style="color: #94a3b8; font-size: 0.9em;">6 farklı asallık test algoritması (Miller-Rabin, Fermat, Solovay-Strassen, Lucas, Baillie-PSW, Trial Division) ve 6+ çarpanlara ayırma algoritması (Pollard's Rho, p-1, Williams' p+1, Lenstra ECM, Fermat Faktorizasyon) ile kapsamlı analiz.</p>
+            </div>
+
+            <div class="input-panel">
+                <div class="input-group">
+                    <label for="primalityInput" style="color: #a78bfa;">Sayı Girin (n)</label>
+                    <input type="text" id="primalityInput" placeholder="Örn: 999999999989 veya 10403 veya 1000003">
+                </div>
+
+                <!-- META-ÖĞRENME MOD SEÇİCİ -->
+                <div id="metaModeSelector" style="display: flex; align-items: center; gap: 15px; margin: 12px 0; padding: 12px 16px; background: rgba(167, 139, 250, 0.08); border: 1px solid rgba(167, 139, 250, 0.2); border-radius: 10px;">
+                    <span style="font-size: 1.3em;">🧠</span>
+                    <div style="flex: 1;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <label style="color: #c4b5fd; font-weight: 600; cursor: pointer;" for="metaModeToggle">Meta-Öğrenme (Akıllı Seçim)</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="metaModeToggle" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <p id="metaModeDesc" style="font-size: 0.78em; color: #94a3b8; margin-top: 3px;">ML modeli en verimli algoritmayı tahmin eder ve direkt çalıştırır.</p>
+                    </div>
+                    <button id="metaTrainBtn" class="quick-fill-btn" onclick="trainMetaModel()" style="background: rgba(167, 139, 250, 0.2); color: #c4b5fd; border-color: #7c3aed; font-size: 0.78em; white-space: nowrap;" title="Modeli benchmark verisiyle eğitir (~2 dk)">
+                        ⚙️ Modeli Eğit
+                    </button>
+                    <span id="metaStatusBadge" style="font-size: 0.75em; padding: 3px 8px; border-radius: 6px; background: #dc2626; color: white;">Eğitilmedi</span>
+                </div>
+
+                <!-- META TAHMİN BİLGİSİ -->
+                <div id="metaPredictionInfo" class="hidden" style="padding: 10px 14px; margin-bottom: 12px; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; font-size: 0.85em;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                        <span style="font-size: 1.1em;">🎯</span>
+                        <span id="metaPredAlgo" style="color: #10b981; font-weight: 600;"></span>
+                        <span id="metaPredConf" style="color: #94a3b8;"></span>
+                    </div>
+                    <p id="metaPredReason" style="color: #a8b2d1; margin: 0; font-size: 0.85em;"></p>
+                </div>
+
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                    <button class="btn-primary" onclick="runPrimalityTest()" style="background: linear-gradient(135deg, #7c3aed, #a78bfa); flex: 1; min-width: 200px;">
+                        <span class="btn-icon">🔬</span> Asallık Testi Çalıştır
+                    </button>
+                    <button class="btn-primary" onclick="runAdvancedFactor()" style="background: linear-gradient(135deg, #dc2626, #f87171); flex: 1; min-width: 200px;">
+                        <span class="btn-icon">💣</span> Çarpanlarına Ayır (Kır)
+                    </button>
+                </div>
+
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 5px;">
+                    <button class="quick-fill-btn" onclick="fillPrimalityInput('999999999989')" title="Büyük Asal">🟢 Büyük Asal</button>
+                    <button class="quick-fill-btn" onclick="fillPrimalityInput('561')" title="Carmichael Sayısı">🔴 Carmichael (561)</button>
+                    <button class="quick-fill-btn" onclick="fillPrimalityInput('1729')" title="Ramanujan/Carmichael">🟡 Ramanujan (1729)</button>
+                    <button class="quick-fill-btn" onclick="fillPrimalityInput('1000003000099')" title="p×q">🟣 Bileşik (p×q)</button>
+                    <button class="quick-fill-btn" onclick="fillPrimalityInput('170141183460469231731687303715884105727')" title="Mersenne Asal M127">⚡ Mersenne M127</button>
+                </div>
+            </div>
+
+            <!-- Asallık Testi Sonuçları -->
+            <div id="primalityResults" class="results-panel hidden">
+                <div id="primalityVerdict" class="result-section" style="border-left-color: #a78bfa; background: rgba(167, 139, 250, 0.05);">
+                    <h3 style="color: #a78bfa;">Nihai Karar (Verdict)</h3>
+                    <div id="primalityVerdictContent"></div>
+                </div>
+
+                <div class="result-section">
+                    <h3>Algoritma Bazlı Detaylı Sonuçlar</h3>
+                    <div id="primalityTestDetails"></div>
+                </div>
+            </div>
+
+            <!-- Çarpanlara Ayırma Sonuçları -->
+            <div id="factorResults" class="results-panel hidden">
+                <div id="factorVerdict" class="result-section best-result">
+                    <h3>En İyi Faktorizasyon Sonucu</h3>
+                    <div id="factorVerdictContent"></div>
+                </div>
+
+                <div class="result-section">
+                    <h3>Algoritma Yarışı (Tüm Sonuçlar)</h3>
+                    <div id="factorAllResults"></div>
+                </div>
             </div>
         </section>
     </main>

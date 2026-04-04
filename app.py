@@ -24,6 +24,9 @@ from aes_oracle import VulnerableServer, crack_padding_oracle
 from hash_cracker import brute_force_hash, identify_hash_type
 from des_engine import crack_des_dictionary
 from decryptor import wiener_attack, crack_rsa
+from primality_testing import run_all_primality_tests
+from advanced_factoring import smart_factorize
+from meta_learner import train_meta_models, is_model_trained, predict_best_factor_algorithm, predict_best_prime_test
 
 app = Flask(__name__)
 
@@ -506,6 +509,302 @@ def wiener():
         return jsonify(result)
     except Exception as ex:
         return jsonify({"error": str(ex)}), 500
+
+# ─── ASALLIK TESTİ & GELİŞMİŞ ÇARPANLARA AYIRMA ──────────────
+
+@app.route('/api/primality-test', methods=['POST'])
+def primality_test():
+    """Kapsamlı asallık testi: 6 farklı algoritma ile sayıyı test eder."""
+    data = request.get_json()
+    number_str = data.get('number', '').strip()
+
+    if not number_str:
+        return jsonify({"error": "Sayı değeri boş olamaz."}), 400
+
+    try:
+        n = int(number_str)
+    except ValueError:
+        return jsonify({"error": "Geçersiz sayısal değer."}), 400
+
+    if n < 2:
+        return jsonify({"error": "Sayı 2 veya daha büyük olmalıdır."}), 400
+
+    start_time = time.time()
+    mode = data.get('mode', 'auto')  # meta / race / auto
+    result = run_all_primality_tests(n, mode=mode)
+    result['api_time'] = round(time.time() - start_time, 6)
+
+    return jsonify(result)
+
+
+@app.route('/api/advanced-factor', methods=['POST'])
+def advanced_factor():
+    """Gelişmiş çarpanlara ayırma: 6+ algoritma ile sayıyı faktorize eder."""
+    data = request.get_json()
+    number_str = data.get('number', '').strip()
+
+    if not number_str:
+        return jsonify({"error": "Sayı değeri boş olamaz."}), 400
+
+    try:
+        n = int(number_str)
+    except ValueError:
+        return jsonify({"error": "Geçersiz sayısal değer."}), 400
+
+    if n < 2:
+        return jsonify({"error": "Sayı 2 veya daha büyük olmalıdır."}), 400
+
+    start_time = time.time()
+    mode = data.get('mode', 'auto')  # meta / race / auto
+    result = smart_factorize(n, mode=mode)
+    result['api_time'] = round(time.time() - start_time, 6)
+
+    return jsonify(result)
+
+
+# ─── META-ÖĞRENME EĞİTİM & DURUM ─────────────────────────────
+
+@app.route('/api/meta-status', methods=['GET'])
+def meta_status():
+    """Meta-öğrenme model durumunu kontrol eder."""
+    status = is_model_trained()
+    return jsonify(status)
+
+
+@app.route('/api/meta-train', methods=['POST'])
+def meta_train():
+    """Meta-öğrenme modellerini benchmark ile eğitir. (Birkaç dakika sürebilir)"""
+    try:
+        start_time = time.time()
+        results = train_meta_models()
+        results['training_time'] = round(time.time() - start_time, 2)
+        return jsonify({"success": True, "results": results})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ─── HAZIR TEST ÖRNEKLERİ (Frontend için) ──────────────────────
+@app.route('/api/test-cases', methods=['GET'])
+def get_test_cases():
+    """Auto-tester'daki test örneklerini frontend'e sunar."""
+    import hashlib
+
+    def enc_caesar(text, shift):
+        res = ""
+        for c in text:
+            if c.isalpha():
+                off = 65 if c.isupper() else 97
+                res += chr((ord(c) - off + shift) % 26 + off)
+            else:
+                res += c
+        return res
+
+    def enc_vigenere(text, key):
+        res, ki = "", 0
+        key = key.upper()
+        for c in text:
+            if c.isalpha():
+                s = ord(key[ki % len(key)]) - 65
+                off = 65 if c.isupper() else 97
+                res += chr((ord(c) - off + s) % 26 + off)
+                ki += 1
+            else:
+                res += c
+        return res
+
+    def enc_xor_hex(text, kb):
+        return bytes([ord(c) ^ kb for c in text]).hex()
+
+    def enc_atbash(text):
+        res = ""
+        for c in text:
+            if c.isalpha():
+                off = 65 if c.isupper() else 97
+                res += chr(off + 25 - (ord(c) - off))
+            else:
+                res += c
+        return res
+
+    def enc_affine(text, a, b):
+        res = ""
+        for c in text:
+            if c.isalpha():
+                off = 65 if c.isupper() else 97
+                x = ord(c) - off
+                res += chr((a * x + b) % 26 + off)
+            else:
+                res += c
+        return res
+
+    def enc_rail_fence(text, rails):
+        fence = [[] for _ in range(rails)]
+        pat = list(range(rails)) + list(range(rails - 2, 0, -1))
+        for i, c in enumerate(text):
+            fence[pat[i % len(pat)]].append(c)
+        return "".join("".join(r) for r in fence)
+
+    def enc_multi_xor_hex(text, keys):
+        return bytes([ord(c) ^ keys[i % len(keys)] for i, c in enumerate(text)]).hex()
+
+    def enc_columnar(text, order):
+        nc = len(order)
+        rows = [text[i:i+nc] for i in range(0, len(text), nc)]
+        ct = ""
+        for col in order:
+            for row in rows:
+                if col < len(row):
+                    ct += row[col]
+        return ct
+
+    def enc_playfair(text, km):
+        clean = "".join(c for c in text.upper() if c.isalpha()).replace('J', 'I')
+        prep = ""
+        i = 0
+        while i < len(clean):
+            prep += clean[i]
+            if i+1 < len(clean):
+                if clean[i] == clean[i+1]:
+                    prep += 'X'
+                else:
+                    prep += clean[i+1]
+                    i += 1
+            i += 1
+        if len(prep) % 2 != 0:
+            prep += 'X'
+        matrix = list(km.upper().replace('J', 'I'))
+        def fp(ch):
+            idx = matrix.index(ch)
+            return idx // 5, idx % 5
+        res = ""
+        for i in range(0, len(prep), 2):
+            r1, c1 = fp(prep[i])
+            r2, c2 = fp(prep[i+1])
+            if r1 == r2:
+                res += matrix[r1*5+(c1+1)%5] + matrix[r2*5+(c2+1)%5]
+            elif c1 == c2:
+                res += matrix[((r1+1)%5)*5+c1] + matrix[((r2+1)%5)*5+c2]
+            else:
+                res += matrix[r1*5+c2] + matrix[r2*5+c1]
+        return res
+
+    def gen_aes_ecb():
+        b1 = bytes([0xAB,0xCD,0xEF,0x12,0x34,0x56,0x78,0x9A,0xBC,0xDE,0xF0,0x11,0x22,0x33,0x44,0x55])
+        b2 = bytes([0xFE,0xDC,0xBA,0x98,0x76,0x54,0x32,0x10,0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,0x00,0x11])
+        return (b1 + b2 + b1 + b2 + b1).hex()
+
+    def gen_aes_ecb_2():
+        b = bytes([0x11,0x22,0x33,0x44,0x55,0x66,0x77,0x88,0x99,0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,0x00])
+        return (b * 4).hex()
+
+    def enc_des_ecb(text, key_str):
+        cipher = DES.new(key_str.encode(), DES.MODE_ECB)
+        return cipher.encrypt(pad(text.encode(), 8)).hex()
+
+    def enc_des_cbc(text, key_str, iv_str="12345678"):
+        iv = iv_str.encode()
+        cipher = DES.new(key_str.encode(), DES.MODE_CBC, iv)
+        ct = cipher.encrypt(pad(text.encode(), 8))
+        return (iv + ct).hex()
+
+    cases = {
+        "plaintext": {
+            "ciphertext": "This is a perfectly normal English sentence for testing.",
+            "info": "Düz metin — şifreleme yok. Sistem bunu tanımalı."
+        },
+        "caesar3": {
+            "ciphertext": enc_caesar("Computer engineering is very cool.", 3),
+            "info": "Caesar Shift=3 | Orijinal: Computer engineering is very cool."
+        },
+        "caesar10": {
+            "ciphertext": enc_caesar("Yusuf is doing a great job and you are a great engineer.", 10),
+            "info": "Caesar Shift=10 | Orijinal: Yusuf is doing a great job..."
+        },
+        "vig_acam": {
+            "ciphertext": enc_vigenere("Computer engineering is the practice of designing, developing, and testing computer systems and software. It involves a deep understanding of both hardware architecture and software algorithms to build efficient and scalable technological solutions for modern problems.", "ACAM"),
+            "info": "Vigenère Key=ACAM | Uzun mühendislik metni"
+        },
+        "vig_secrets": {
+            "ciphertext": enc_vigenere("Cryptography is an indispensable tool for protecting information in computer systems. It provides confidentiality, integrity, and authentication. As computational power increases, we must constantly evolve our cryptographic methods to stay ahead of potential adversarial attacks.", "SECRETS"),
+            "info": "Vigenère Key=SECRETS | Kriptografi hakkında uzun metin"
+        },
+        "vig_acam_long": {
+            "ciphertext": enc_vigenere("Computer engineering is a discipline that integrates several fields of computer science and electronics engineering required to develop computer hardware and software. Computer engineers usually have training in electronic engineering, software design, and hardware-software integration instead of only software engineering or electronic engineering.", "ACAM"),
+            "info": "Vigenère Key=ACAM | Çok uzun metin (istatistiksel doğrulama)"
+        },
+        "xor_42": {
+            "ciphertext": enc_xor_hex("Secret data is hidden here.", 0x42),
+            "info": "Single-byte XOR Key=0x42 | Hex çıktı"
+        },
+        "hex_vig": {
+            "ciphertext": enc_vigenere("Double encryption is highly secure.", "ACAM").encode('utf-8').hex(),
+            "info": "Hex + Vigenère Key=ACAM | Çift katman"
+        },
+        "atbash": {
+            "ciphertext": enc_atbash("The quick brown fox jumps over the lazy dog and runs away fast."),
+            "info": "Atbash (ayna şifre) | Orijinal: The quick brown fox..."
+        },
+        "affine": {
+            "ciphertext": enc_affine("Affine ciphers are a type of monoalphabetic substitution cipher.", 5, 8),
+            "info": "Affine a=5, b=8 | Monoalfabetik yerine koyma"
+        },
+        "rail_fence": {
+            "ciphertext": enc_rail_fence("We are discovered so flee at once to the safe house immediately.", 3),
+            "info": "Rail Fence 3 ray | Transpozisyon şifre"
+        },
+        "b64_caesar": {
+            "ciphertext": base64.b64encode(enc_caesar("Base sixty four encoding hides the cipher text underneath nicely.", 5).encode()).decode(),
+            "info": "Base64 + Caesar Shift=5 | Kodlama + şifreleme"
+        },
+        "multi_xor": {
+            "ciphertext": enc_multi_xor_hex("Multi byte XOR encryption is stronger than single byte keys.", [0x41, 0x43]),
+            "info": "Multi-byte XOR Keys=[0x41, 0x43] | Hex çıktı"
+        },
+        "columnar": {
+            "ciphertext": enc_columnar("The enemy forces are approaching from the north side of the river.", [2, 0, 1]),
+            "info": "Columnar Transposition sıra=[2,0,1] | Sütun bazlı"
+        },
+        "playfair": {
+            "ciphertext": enc_playfair("The Playfair cipher is a manual symmetric encryption technique and was the first literal digram substitution cipher. The scheme was invented in eighteen fifty four by Charles Wheatstone but bears the name of Lord Playfair for promoting its use. It involves the creation of a five by five matrix of letters to encrypt pairs of letters. This makes it much harder to break using simple frequency analysis.", "MONARCHYBDEFGIKLPQSTUVWXZ"),
+            "info": "Playfair Key=MONARCHY | Digram yerine koyma şifresi"
+        },
+        "b32_caesar": {
+            "ciphertext": base64.b32encode(enc_caesar("Base thirty two encoding is also commonly used in systems.", 3).encode()).decode(),
+            "info": "Base32 + Caesar Shift=3 | Farklı kodlama"
+        },
+        "repeat_xor": {
+            "ciphertext": enc_multi_xor_hex("Repeating key XOR uses the same key bytes over and over again to encrypt the full message.", [0x53, 0x45, 0x43]),
+            "info": "Repeating-Key XOR [0x53, 0x45, 0x43] | S-E-C anahtarı"
+        },
+        "aes_ecb_1": {
+            "ciphertext": gen_aes_ecb(),
+            "info": "AES-ECB tekrarlayan bloklar — zafiyet tespiti beklenir"
+        },
+        "aes_ecb_2": {
+            "ciphertext": gen_aes_ecb_2(),
+            "info": "AES-ECB varyasyon 2 — 4 adet aynı blok"
+        },
+        "hash_md5": {
+            "ciphertext": hashlib.md5("acam".encode()).hexdigest(),
+            "info": "MD5 Hash | Hedef: 'acam' — brute-force ile kırılır"
+        },
+        "hash_sha256": {
+            "ciphertext": hashlib.sha256("test".encode()).hexdigest(),
+            "info": "SHA-256 Hash | Hedef: 'test' — brute-force ile kırılır"
+        },
+        "des_ecb": {
+            "ciphertext": enc_des_ecb("GIZLI VERI", "admin123"),
+            "info": "DES ECB Key=admin123 | Sözlük saldırısı ile kırılır"
+        },
+        "des_cbc": {
+            "ciphertext": enc_des_cbc("TOP SECRET", "password", "12345678"),
+            "info": "DES CBC Key=password IV=12345678 | Sözlük saldırısı"
+        }
+    }
+
+    return jsonify(cases)
+
 
 UPLOAD_FOLDER = 'data/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
